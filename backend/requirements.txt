@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+websockets
+fastf1
+numpy
+pandas
+python-dotenv
+scipy
