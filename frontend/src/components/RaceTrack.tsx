@@ -31,6 +31,33 @@ interface RaceTrackProps {
   }
 }
 
+// Matches vertex iA and iB 
+function sectorBandBoundaryFracs(
+  pts: { x: number; y: number }[],
+  iA: number,
+  iB: number
+): { bound12: number; bound23: number } {
+  const n = pts.length
+  if (n < 2) return { bound12: 1 / 3, bound23: 2 / 3 }
+  const segLens: number[] = []
+  let total = 0
+  for (let i = 0; i < n; i++) {
+    const ax = pts[i].x
+    const ay = pts[i].y
+    const bx = pts[(i + 1) % n].x
+    const by = pts[(i + 1) % n].y
+    segLens.push(Math.hypot(bx - ax, by - ay))
+    total += segLens[segLens.length - 1]
+  }
+
+  if (total <= 0) return { bound12: 1 / 3, bound23: 2 / 3 }
+  let c12 = 0
+  for (let j = 0; j < iA; j++) c12 += segLens[j]
+  let c23 = 0
+  for (let j = 0; j < iB; j++) c23 += segLens[j]
+  return { bound12: c12 / total, bound23: c23 / total }
+}
+
 type SectorHoverLayout = {
   canvasW: number
   canvasH: number
@@ -41,8 +68,8 @@ type SectorHoverLayout = {
   scale: number
   rotateLeft90: boolean
   centerPts: { x: number; y: number }[]
-  cutA: number
-  cutB: number
+  bound12: number
+  bound23: number
   maxHoverDistSq: number
 }
 
@@ -446,6 +473,7 @@ export default function RaceTrack({ frameData, trackBoundaries }: RaceTrackProps
           strokeClosedPolyline(innerSmooth.x, innerSmooth.y, n, '#ffffff', 2)
           const centerPtsSector: { x: number; y: number }[] = []
           for (let i = 0; i < n; i++) centerPtsSector.push({ x: cx[i], y: cy[i] })
+          const { bound12, bound23 } = sectorBandBoundaryFracs(centerPtsSector, iA, iB)
           sectorLayoutRef.current = {
             canvasW: canvas.width,
             canvasH: canvas.height,
@@ -456,8 +484,8 @@ export default function RaceTrack({ frameData, trackBoundaries }: RaceTrackProps
             scale,
             rotateLeft90,
             centerPts: centerPtsSector,
-            cutA,
-            cutB,
+            bound12,
+            bound23,
             maxHoverDistSq: (1.2 * corridorHalfM) ** 2,
           }
         }
@@ -588,7 +616,7 @@ export default function RaceTrack({ frameData, trackBoundaries }: RaceTrackProps
         return
       }
 
-      const sector = (frac < L.cutA ? 1 : frac < L.cutB ? 2 : 3) as 1 | 2 | 3
+      const sector = (frac < L.bound12 ? 1 : frac < L.bound23 ? 2 : 3) as 1 | 2 | 3
       setSectorHover({ sector, clientX: ev.clientX, clientY: ev.clientY })
     }
     const onSectorLeave = () => setSectorHover(null)
