@@ -15,7 +15,7 @@ class TelemetryService:
     def load_session(self, year: int, round_number: int, session_type: str = "R", refresh: bool = False) -> Dict[str, Any]:
         self.active_session_type = session_type
         if session_type in ("Q", "SQ"):
-            self.qualifying_data = self._load_qualifying(year, round_number, session_type, refresh=refresh)
+            self.qualifying_data = self.load_qualifying(year, round_number, session_type, refresh=refresh)
             self.processor = None
             return {
                 "mode": "qualifying",
@@ -48,7 +48,7 @@ class TelemetryService:
         return self.processor.get_frame(frame_index)
 
     def list_rounds(self, year: int) -> list[Dict[str, Any]]:
-        self._enable_cache()
+        self.enable_cache()
         schedule = fastf1.get_event_schedule(year)
         items = []
         for _, event in schedule.iterrows():
@@ -67,13 +67,13 @@ class TelemetryService:
         
         return items
 
-    def _enable_cache(self) -> None:
+    def enable_cache(self) -> None:
         cache_dir = Path(".fastf1-cache")
         cache_dir.mkdir(exist_ok=True)
         fastf1.Cache.enable_cache(str(cache_dir))
 
-    def _load_qualifying(self, year: int, round_number: int, session_type: str, refresh: bool = False) -> Dict[str, Any]:
-        self._enable_cache()
+    def load_qualifying(self, year: int, round_number: int, session_type: str, refresh: bool = False) -> Dict[str, Any]:
+        self.enable_cache()
         event_key = f"{year}_R{round_number}_{session_type}"
         cache_file = Path("computed_data") / f"{event_key}_quali_web.pkl"
         cache_file.parent.mkdir(exist_ok=True)
@@ -95,7 +95,7 @@ class TelemetryService:
             
             driver_payload[code] = {"full_name": row.get("FullName"), "segments": {}}
             for segment in ("Q1", "Q2", "Q3"):
-                segment_frames = self._driver_segment_frames(session, code, segment)
+                segment_frames = self.driver_segment_frames(session, code, segment)
                 driver_payload[code]["segments"][segment] = segment_frames
                 max_frames = max(max_frames, len(segment_frames))
 
@@ -140,7 +140,7 @@ class TelemetryService:
         
         return summary
 
-    def _driver_segment_frames(self, session: Any, driver_code: str, segment: str) -> list[Dict[str, Any]]:
+    def driver_segment_frames(self, session: Any, driver_code: str, segment: str) -> list[Dict[str, Any]]:
         q1, q2, q3 = session.laps.split_qualifying_sessions()
         seg_map = {"Q1": q1, "Q2": q2, "Q3": q3}
         laps = seg_map.get(segment)

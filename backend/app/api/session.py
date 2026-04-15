@@ -5,7 +5,7 @@ import numpy as np
 
 router = APIRouter(prefix="/api", tags=["session"])
 
-def _convert_native(obj):
+def convert_native(obj):
     if isinstance(obj, np.integer):
         return int(obj)
     
@@ -16,10 +16,10 @@ def _convert_native(obj):
         return obj.tolist()
     
     if isinstance(obj, dict):
-        return {k: _convert_native(v) for k, v in obj.items()}
+        return {k: convert_native(v) for k, v in obj.items()}
     
     if isinstance(obj, list):
-        return [_convert_native(v) for v in obj]
+        return [convert_native(v) for v in obj]
     
     return obj
 
@@ -34,7 +34,7 @@ async def load_session(payload: SessionLoadRequest):
         )
 
         replay_service.set_total_frames(data.get("total_frames", 0))
-        return _convert_native({"status": "loaded", **data})
+        return convert_native({"status": "loaded", **data})
     
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
