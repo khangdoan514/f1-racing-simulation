@@ -10,8 +10,6 @@ from track import TrackMixin
 
 # Main processor
 class F1DataProcessor(TrackMixin, FramesMixin):
-    CACHE_SCHEMA_VERSION = 12
-
     def __init__(self, year: int, round_number: int, session_type: str = "R"):
         self.year = year
         self.round_number = round_number
@@ -52,11 +50,7 @@ class F1DataProcessor(TrackMixin, FramesMixin):
             print("Loading from cache...")
             try:
                 with open(cache_file, 'rb') as f:
-                    data = pickle.load(f)
-                    cache_version = int(data.get("cache_schema_version", 1) or 1)
-                    if cache_version != self.CACHE_SCHEMA_VERSION:
-                        raise ValueError(f"Cache schema mismatch ({cache_version} != {self.CACHE_SCHEMA_VERSION})")
-                    
+                    data = pickle.load(f)                    
                     self.frames = data['frames']
                     self.drivers = data['drivers']
                     self.circuit_info = data['circuit_info']
@@ -378,7 +372,6 @@ class F1DataProcessor(TrackMixin, FramesMixin):
         
         with open(cache_file, 'wb') as f:
             pickle.dump({
-                'cache_schema_version': self.CACHE_SCHEMA_VERSION,
                 'frames': self.frames,
                 'drivers': self.drivers,
                 'circuit_info': self.circuit_info,

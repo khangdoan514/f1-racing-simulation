@@ -3,8 +3,24 @@ import pickle
 from pathlib import Path
 from typing import Any, Dict, Optional
 import fastf1
+import numpy as np
 import pandas as pd
 from processor import F1DataProcessor
+
+def to_jsonable(obj: Any) -> Any:
+    if obj is None:
+        return None
+    if isinstance(obj, np.ndarray):
+        return to_jsonable(obj.tolist())
+    if isinstance(obj, np.generic):
+        return to_jsonable(obj.item())
+    if isinstance(obj, dict):
+        return {str(k) if not isinstance(k, str) else k: to_jsonable(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [to_jsonable(v) for v in obj]
+    if isinstance(obj, float) and (np.isnan(obj) or np.isinf(obj)):
+        return None
+    return obj
 
 class TelemetryService:
     def __init__(self) -> None:
@@ -44,8 +60,9 @@ class TelemetryService:
     def get_frame(self, frame_index: int) -> Dict[str, Any]:
         if self.processor is None:
             return {}
-        
-        return self.processor.get_frame(frame_index)
+
+        raw = self.processor.get_frame(frame_index)
+        return to_jsonable(raw)
 
     def list_rounds(self, year: int) -> list[Dict[str, Any]]:
         self.enable_cache()

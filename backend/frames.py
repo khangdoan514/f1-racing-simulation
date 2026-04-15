@@ -1,4 +1,5 @@
 import bisect
+import math
 import numpy as np
 import pandas as pd
 from typing import Any, Dict, List, Optional, Tuple
@@ -51,6 +52,7 @@ class FramesMixin:
                     continue
                 
                 out[key] = gpv
+        
         except Exception as exc:
             print(f"Grid positions unavailable: {exc}")
         
@@ -211,6 +213,7 @@ class FramesMixin:
                 
                 out[key] = (t_arr, pos_arr)
             print(f"Timing position stream for {len(out)} drivers")
+        
         except Exception as exc:
             print(f"Failed to parse timing position stream: {exc}")
         
@@ -279,6 +282,7 @@ class FramesMixin:
                         
                         if len(weather) == 0:
                             weather = None
+        
         except Exception as exc:
             print(f"Weather series unavailable: {exc}")
             weather = None
@@ -298,10 +302,84 @@ class FramesMixin:
                         j_idx = np.clip(j_idx, 0, len(tts) - 1)
                         track_codes = st[j_idx]
                         track_msgs = msg[j_idx]
+        
         except Exception as exc:
             print(f"Track status series unavailable: {exc}")
 
         return weather, track_codes, track_msgs
+
+    @staticmethod
+    def timedelta_to_seconds(v: Any) -> Optional[float]:
+        if v is None:
+            return None
+        
+        try:
+            if isinstance(v, float) and pd.isna(v):
+                return None
+        except (TypeError, ValueError):
+            pass
+        
+        try:
+            if hasattr(v, "total_seconds"):
+                return float(v.total_seconds())
+            return float(pd.Timedelta(v).total_seconds())
+        except (TypeError, ValueError):
+            return None
+
+    # Official sector splits
+    def extract_sector_times_by_driver_lap(self, driver_abbrevs: Dict[str, str],) -> Dict[str, Dict[int, Tuple[float, float, float]]]:
+        # driver_key -> lap_number -> (s1_sec, s2_sec, s3_sec)
+        sector_rows: Dict[str, Dict[int, Tuple[float, float, float]]] = {}
+        if self.session is None:
+            return sector_rows
+
+        try:
+            for driver in self.drivers:
+                laps = self.session.laps.pick_drivers(driver)
+                if laps is None or len(laps) == 0:
+                    continue
+
+                key = self.driver_number_key(driver)
+                inner: Dict[int, Tuple[float, float, float]] = {}
+
+                for _, row in laps.iterrows():
+                    s1 = self.timedelta_to_seconds(row.get("Sector1Time"))
+                    s2 = self.timedelta_to_seconds(row.get("Sector2Time"))
+                    s3 = self.timedelta_to_seconds(row.get("Sector3Time"))
+                    if s1 is None or s2 is None or s3 is None:
+                        continue
+                    if s1 <= 0 or s2 <= 0 or s3 <= 0:
+                        continue
+                    if not (math.isfinite(s1) and math.isfinite(s2) and math.isfinite(s3)):
+                        continue
+
+                    ln = row.get("LapNumber")
+                    if ln is None:
+                        continue
+                    try:
+                        if isinstance(ln, float) and pd.isna(ln):
+                            continue
+                    except (TypeError, ValueError):
+                        pass
+                    
+                    try:
+                        lap_num = int(float(ln))
+                    except (TypeError, ValueError):
+                        continue
+                    
+                    if lap_num < 1:
+                        continue
+
+                    inner[lap_num] = (float(s1), float(s2), float(s3))
+
+                if inner:
+                    sector_rows[key] = inner
+        
+        except Exception as exc:
+            print(f"Sector times by lap unavailable: {exc}")
+            return {}
+
+        return sector_rows
 
     # Build per frame driver snapshots
     def generate_frames(
@@ -425,6 +503,29 @@ class FramesMixin:
         running_fastest_lap: Optional[Dict[str, Any]] = None
         use_timing_order = bool(self.timing_stream_arrays)
         weather_series, track_code_arr, track_msg_arr = self.timeline_ambient(timeline)
+
+        sector_rows = self.extract_sector_times_by_driver_lap(driver_abbrevs)
+        best_s1: Optional[Dict[str, Any]] = None
+        best_s2: Optional[Dict[str, Any]] = None
+        best_s3: Optional[Dict[str, Any]] = None
+
+        def sector_better(new_t: float, cur: Optional[Dict[str, Any]]) -> bool:
+            if not math.isfinite(new_t):
+                return False
+            if cur is None:
+                return True
+            
+            old = cur.get("time_seconds")
+            try:
+                old_f = float(old)
+            except (TypeError, ValueError):
+                return True
+            
+            if not math.isfinite(old_f):
+                return True
+            
+            return new_t < old_f
+
         for frame_idx, t in enumerate(timeline):
             if frame_idx % 100 == 0:  # Log every hundred frames
                 print(f"   Progress: {frame_idx}/{num_frames} frames ({frame_idx/num_frames*100:.1f}%)")
@@ -533,6 +634,17 @@ class FramesMixin:
                                 "time_seconds": completed_lap_time,
                                 "lap": int(prev_lap),
                             }
+
+                    triplet = sector_rows.get(key, {}).get(int(prev_lap))
+                    if triplet is not None:
+                        v1, v2, v3 = triplet
+                        abbr = str(driver_abbrevs.get(str(driver), key))
+                        if sector_better(v1, best_s1):
+                            best_s1 = {"abbrev": abbr, "time_seconds": float(v1)}
+                        if sector_better(v2, best_s2):
+                            best_s2 = {"abbrev": abbr, "time_seconds": float(v2)}
+                        if sector_better(v3, best_s3):
+                            best_s3 = {"abbrev": abbr, "time_seconds": float(v3)}
                     
                     lap_start_time_by_driver[key] = float(t)
                     last_lap_seen_by_driver[key] = lap_num
@@ -613,6 +725,12 @@ class FramesMixin:
                 frame_data["fastest_lap"] = running_fastest_lap.copy()
             else:
                 frame_data["fastest_lap"] = None
+
+            frame_data["sector_fastest"] = {
+                "1": best_s1.copy() if best_s1 is not None else None,
+                "2": best_s2.copy() if best_s2 is not None else None,
+                "3": best_s3.copy() if best_s3 is not None else None,
+            }
 
             self.frames.append(frame_data)
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import SessionSelectionPage from './features/selection/SessionSelectionPage'
 import ReplayPage from './features/replay/ReplayPage'
 import QualifyingPage from './features/qualifying/QualifyingPage'
