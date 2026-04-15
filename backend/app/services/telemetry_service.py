@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 import fastf1
 import pandas as pd
-from f1_processor import F1DataProcessor
+from processor import F1DataProcessor
 
 class TelemetryService:
     def __init__(self) -> None:
@@ -28,7 +28,7 @@ class TelemetryService:
         self.qualifying_data = None
         self.processor = F1DataProcessor(year, round_number, session_type)
         if refresh:
-            cache_file = self.processor._get_cache_filename()  # noqa: SLF001
+            cache_file = self.processor.get_cache_filename()
             if os.path.exists(cache_file):
                 os.remove(cache_file)
         
